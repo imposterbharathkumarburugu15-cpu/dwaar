@@ -70,6 +70,10 @@ def load_ruleset(path: Path) -> Ruleset:
 @lru_cache
 def active_ruleset() -> Ruleset:
     d = get_settings().rulesets_dir
+    # Canonical active ruleset is aicte-aph-2024-27.yaml
+    canonical = d / "aicte-aph-2024-27.yaml"
+    if canonical.exists():
+        return load_ruleset(canonical)
     # regulatory_basis.yaml sits beside the rulesets but is not one (pramana.rules.basis)
     files = sorted(p for p in d.glob("*.yaml") if p.name != "regulatory_basis.yaml")
     if not files:

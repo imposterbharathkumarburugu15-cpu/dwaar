@@ -2,7 +2,18 @@
 
 type Open<T extends string> = T | (string & {});
 
-export type Role = "institution" | "officer" | "verifier" | "admin";
+export type Role =
+  | "super_admin"
+  | "aicte_admin"
+  | "regional_officer"
+  | "institution_admin"
+  | "institution_operator"
+  | "applicant"
+  | "external_verifier"
+  | "institution"
+  | "officer"
+  | "verifier"
+  | "admin";
 
 export interface User {
   id: string;

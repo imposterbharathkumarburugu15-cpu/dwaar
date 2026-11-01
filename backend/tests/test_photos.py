@@ -183,6 +183,8 @@ def world():
     init_db()
     with SessionLocal() as db:
         seeded = db.scalar(select(func.count()).select_from(ValidationRun))
+    from pramana.db import engine
+    engine.dispose()
     if not seeded:
         _load("seed").main(validate=True)
     from pramana.main import app

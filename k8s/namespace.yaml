@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pramana
+  labels:
+    app.kubernetes.io/name: pramana
+    app.kubernetes.io/part-of: pramana-enterprise
+    environment: production
+

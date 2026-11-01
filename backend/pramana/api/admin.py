@@ -36,6 +36,16 @@ class Login(BaseModel):
     password: str
 
 
+class InstitutionOnboardRequest(BaseModel):
+    name: str
+    aicte_id: str
+    state: str = "Maharashtra"
+    category: str = "Engineering & Technology"
+    contact_email: str
+    admin_username: str
+    admin_password: str
+
+
 @router.post("/auth/login")
 def login(body: Login, request: Request, response: Response, db: Session = Depends(get_db)):
     throttle.check(db, request, body.username)
@@ -259,3 +269,79 @@ def run_metrics(user: User = Depends(require_roles(*OFFICIAL_ROLES)), db: Sessio
     durs = [(r.finished_at - r.started_at).total_seconds() for r in runs if r.finished_at]
     return {"runs": len(runs), "mean_seconds": round(sum(durs) / len(durs), 2) if durs else None,
             "max_seconds": round(max(durs), 2) if durs else None}
+
+
+@router.post("/admin/institutions/onboard")
+def onboard_institution(
+    body: InstitutionOnboardRequest,
+    user: User = Depends(require_roles("super_admin", "aicte_admin", "admin")),
+    db: Session = Depends(get_db),
+):
+    """Enterprise onboarding workflow for new institutions and their administrators."""
+    from ..auth import hash_password, validate_password_complexity, PasswordPolicyError
+
+    # 1. Validate password policy
+    try:
+        validate_password_complexity(body.admin_password, is_admin=True)
+    except PasswordPolicyError as e:
+        raise HTTPException(400, str(e)) from e
+
+    # 2. Check for duplicate AICTE ID
+    existing_inst = db.scalars(select(Institution).where(Institution.aicte_id == body.aicte_id)).first()
+    if existing_inst:
+        raise HTTPException(409, f"Institution with AICTE ID '{body.aicte_id}' already registered.")
+
+    # 3. Check for duplicate admin username
+    existing_user = db.scalars(select(User).where(User.username == body.admin_username)).first()
+    if existing_user:
+        raise HTTPException(409, f"Username '{body.admin_username}' is already in use.")
+
+    # 4. Create Institution
+    inst_id = f"inst_{body.aicte_id.replace('-', '_').lower()}"
+    inst = Institution(
+        id=inst_id,
+        aicte_id=body.aicte_id,
+        name=body.name,
+        state=body.state,
+    )
+    db.add(inst)
+    db.flush()
+
+    # 5. Create Administrator Account
+    admin_user = User(
+        username=body.admin_username,
+        role="institution_admin",
+        password_hash=hash_password(body.admin_password),
+        institution_id=inst.id,
+        display_name=f"{body.name} Administrator",
+        active=True,
+    )
+    db.add(admin_user)
+    db.flush()
+
+    # 6. Audit Trail
+    audit.record(
+        db,
+        actor=user.username,
+        actor_role=user.role,
+        action="enterprise.institution_onboarded",
+        object_type="institution",
+        object_id=inst.id,
+        details={
+            "name": inst.name,
+            "aicte_id": inst.aicte_id,
+            "state": inst.state,
+            "admin_user": admin_user.username,
+        },
+    )
+    db.commit()
+
+    return {
+        "status": "ONBOARDED",
+        "institution_id": inst.id,
+        "aicte_id": inst.aicte_id,
+        "name": inst.name,
+        "admin_username": admin_user.username,
+        "created_at": ser.user(admin_user).get("created_at"),
+    }
+

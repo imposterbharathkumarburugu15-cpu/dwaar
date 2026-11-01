@@ -59,5 +59,11 @@ export function useLogout() {
 }
 
 export function homePath(role: Role | undefined): string {
-  return role === "institution" ? "/portal" : "/dashboard";
+  if (role === "institution" || role === "institution_admin" || role === "institution_operator" || role === "applicant") {
+    return "/portal";
+  }
+  if (role === "verifier" || role === "external_verifier") {
+    return "/scan";
+  }
+  return "/dashboard";
 }

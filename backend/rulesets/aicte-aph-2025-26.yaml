@@ -1,0 +1,81 @@
+# Pramana ruleset: AICTE Approval Process Handbook 2025-26 Edition
+# Historical Reference Ruleset
+
+ruleset:
+  id: aicte-aph-2025-26
+  title: AICTE approval checks (APH 2025-26 Historical Baseline)
+  version: 2025-26.1
+  maintainer: Regulation Bureau rules desk
+  note: Historical baseline ruleset for evaluating 2025-26 applications.
+
+sources:
+  - id: APH25
+    title: AICTE Approval Process Handbook 2025-26
+    url: https://www.aicte.gov.in/
+    published: 2024-12-01
+  - id: CONFIG
+    title: Pramana configuration
+    url: null
+    published: 2025-10-01
+
+norms:
+  faculty_student_ratio:
+    DIPLOMA: 25
+    UG_ET: 20
+    PG_ET: 15
+    MCA: 20
+    MBA: 20
+  bandwidth_tiers_mbps:
+    - {max_intake: 300, mbps: 100}
+    - {max_intake: 600, mbps: 300}
+    - {max_intake: 900, mbps: 500}
+    - {max_intake: 999999, mbps: 1000}
+  academic_session: {start: "07-01", months: 12, source: CONFIG}
+
+document_types:
+  affidavit_2:
+    label: Affidavit 2 (self-disclosure on e-stamp paper)
+    description: Portal-generated Affidavit 2 on Rs 100 e-stamp paper.
+    classify: {keywords: ["affidavit", "e-stamp", "stamp duty"], min_score: 2}
+    fields:
+      - {name: estamp_certificate_no, patterns: ['Certificate No\.?\s*:\s*(?P<v>IN-[A-Z]{2}[0-9A-Z]{8,})']}
+      - {name: stamp_value, type: amount, patterns: ['Stamp Duty Amount\s*\(Rs\.?\)\s*:\s*(?P<v>[\d,]+)']}
+  fire_noc:
+    label: Fire Safety Certificate (NOC)
+    description: Certificate from State Fire Service Department.
+    classify: {keywords: ["fire", "noc", "safety", "fire service"], min_score: 2}
+    fields:
+      - {name: noc_number, patterns: ['(?:NOC|Certificate|Ref)\s*(?:No\.?|Number)?\s*:\s*(?P<v>[A-Z0-9/\-]+)']}
+      - {name: valid_upto, type: date, patterns: ['Valid (?:upto|until|to)\s*:\s*(?P<v>\d{1,2}[-/.]\d{1,2}[-/.]\d{4})']}
+
+checklists:
+  extension_of_approval:
+    required: [affidavit_2, fire_noc]
+    optional: []
+  increase_intake:
+    required: [affidavit_2, fire_noc]
+    optional: []
+
+rules:
+  - id: R-AFF2-STAMP-VALUE-25
+    title: Affidavit 2 e-stamp duty meets statutory minimum (Rs 100)
+    category: legal
+    severity: high
+    evidence_class: document
+    source: {doc: APH25, clause: "Annexure 2.1", page: 45}
+    applies_to: {requires_docs: [affidavit_2]}
+    check: "doc.affidavit_2.stamp_value >= 100"
+    message_fail: "Affidavit 2 stamp duty is Rs {doc.affidavit_2.stamp_value}; minimum Rs 100 required."
+    message_pass: "Affidavit 2 stamp duty meets Rs 100 requirement."
+
+  - id: R-FIRE-VALID-SESSION-25
+    title: Fire NOC valid through the academic session
+    category: safety
+    severity: critical
+    evidence_class: verification
+    source: {doc: APH25, clause: "Clause 2.4.1", page: 32}
+    applies_to: {requires_docs: [fire_noc]}
+    check: "doc.fire_noc.valid_upto >= '2026-06-30'"
+    message_fail: "Fire NOC expires on {doc.fire_noc.valid_upto}, before end of session 2025-26."
+    message_pass: "Fire NOC covers the academic session."
+

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pramana-worker-documents
+  namespace: pramana
+  labels:
+    app: pramana-worker-documents
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: pramana-worker-documents
+  template:
+    metadata:
+      labels:
+        app: pramana-worker-documents
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: pramana/backend:v0.3.0
+          command: ["celery", "-A", "backend.pramana.distributed.celery_app", "worker", "-Q", "document_processing", "-c", "4", "-l", "INFO"]
+          envFrom:
+            - configMapRef:
+                name: pramana-config
+            - secretRef:
+                name: pramana-secrets
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "2Gi"
+            limits:
+              cpu: "4000m"
+              memory: "8Gi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pramana-worker-verification
+  namespace: pramana
+  labels:
+    app: pramana-worker-verification
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pramana-worker-verification
+  template:
+    metadata:
+      labels:
+        app: pramana-worker-verification
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: pramana/backend:v0.3.0
+          command: ["celery", "-A", "backend.pramana.distributed.celery_app", "worker", "-Q", "ai_verification,certificate_verification,risk_scoring", "-c", "2", "-l", "INFO"]
+          envFrom:
+            - configMapRef:
+                name: pramana-config
+            - secretRef:
+                name: pramana-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+

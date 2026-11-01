@@ -6,9 +6,15 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+import time
+import uuid
+
 from . import jobs, sandbox
 from .analyse import api as analyse_api
-from .api import admin, applications, live, ops, photos, public
+from .api import admin, applications, intelligence, live, offline_field, ops, photos, public, trust_api
+from .distributed.gateway import router as distributed_router
+from .distributed.observability import metrics_collector
+from .api.integrations import router as integrations_router
 from .config import get_settings
 from .conversation import api as conversation_api
 from .db import init_db
@@ -68,6 +74,34 @@ app.include_router(insight_inspection.router)
 app.include_router(drishti_api.router)
 app.include_router(conversation_api.router)
 app.include_router(handoff_api.router)
+app.include_router(intelligence.router)
+app.include_router(offline_field.router)
+app.include_router(trust_api.router)
+app.include_router(distributed_router)
+app.include_router(integrations_router)
+
+
+@app.middleware("http")
+async def request_telemetry_and_correlation(request: Request, call_next):
+    req_id = request.headers.get("X-Request-ID") or f"req_{uuid.uuid4().hex[:12]}"
+    correlation_id = request.headers.get("X-Correlation-ID") or request.headers.get("x-correlation-id")
+    request.state.request_id = req_id
+    t0 = time.perf_counter()
+
+    resp = await call_next(request)
+
+    elapsed = time.perf_counter() - t0
+    resp.headers["X-Request-ID"] = req_id
+    if correlation_id:
+        resp.headers["X-Correlation-ID"] = correlation_id
+        resp.headers["x-correlation-id"] = correlation_id
+    metrics_collector.record_http_request(
+        method=request.method,
+        endpoint=request.url.path,
+        status_code=resp.status_code,
+        duration_seconds=elapsed,
+    )
+    return resp
 
 
 @app.middleware("http")

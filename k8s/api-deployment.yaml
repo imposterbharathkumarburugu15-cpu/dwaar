@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pramana-api
+  namespace: pramana
+  labels:
+    app: pramana-api
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: pramana-api
+  template:
+    metadata:
+      labels:
+        app: pramana-api
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: api
+          image: pramana/backend:v0.3.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: pramana-config
+            - secretRef:
+                name: pramana-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pramana-api-service
+  namespace: pramana
+spec:
+  type: ClusterIP
+  selector:
+    app: pramana-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+

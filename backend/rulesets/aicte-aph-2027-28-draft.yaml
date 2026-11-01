@@ -1,0 +1,81 @@
+# Pramana ruleset: AICTE Approval Process Handbook 2027-28 (Draft Proposal)
+# Illustrative Demonstration Ruleset
+
+ruleset:
+  id: aicte-aph-2027-28-draft
+  title: AICTE approval checks (APH 2027-28 Forward Draft Proposal)
+  version: 2027-28.0-DRAFT
+  maintainer: Regulation Bureau policy simulation desk
+  note: Illustrative draft ruleset with tightened quality benchmarks for what-if impact simulation.
+
+sources:
+  - id: APH27_DRAFT
+    title: AICTE Approval Process Handbook 2027-28 Draft Consultation Paper
+    url: https://www.aicte.gov.in/
+    published: 2026-10-15
+  - id: CONFIG
+    title: Pramana configuration
+    url: null
+    published: 2026-10-15
+
+norms:
+  faculty_student_ratio:
+    DIPLOMA: 20
+    UG_ET: 15
+    PG_ET: 12
+    MCA: 15
+    MBA: 15
+  bandwidth_tiers_mbps:
+    - {max_intake: 300, mbps: 300}
+    - {max_intake: 600, mbps: 600}
+    - {max_intake: 900, mbps: 1000}
+    - {max_intake: 999999, mbps: 2000}
+  academic_session: {start: "07-01", months: 12, source: CONFIG}
+
+document_types:
+  affidavit_2:
+    label: Affidavit 2 (self-disclosure on e-stamp paper)
+    description: Portal-generated Affidavit 2 on Rs 200 e-stamp paper.
+    classify: {keywords: ["affidavit", "e-stamp", "stamp duty"], min_score: 2}
+    fields:
+      - {name: estamp_certificate_no, patterns: ['Certificate No\.?\s*:\s*(?P<v>IN-[A-Z]{2}[0-9A-Z]{8,})']}
+      - {name: stamp_value, type: amount, patterns: ['Stamp Duty Amount\s*\(Rs\.?\)\s*:\s*(?P<v>[\d,]+)']}
+  fire_noc:
+    label: Fire Safety Certificate (NOC)
+    description: Certificate from State Fire Service Department.
+    classify: {keywords: ["fire", "noc", "safety", "fire service"], min_score: 2}
+    fields:
+      - {name: noc_number, patterns: ['(?:NOC|Certificate|Ref)\s*(?:No\.?|Number)?\s*:\s*(?P<v>[A-Z0-9/\-]+)']}
+      - {name: valid_upto, type: date, patterns: ['Valid (?:upto|until|to)\s*:\s*(?P<v>\d{1,2}[-/.]\d{1,2}[-/.]\d{4})']}
+
+checklists:
+  extension_of_approval:
+    required: [affidavit_2, fire_noc]
+    optional: []
+  increase_intake:
+    required: [affidavit_2, fire_noc]
+    optional: []
+
+rules:
+  - id: R-AFF2-STAMP-VALUE-27
+    title: Affidavit 2 e-stamp duty meets revised statutory minimum (Rs 200)
+    category: legal
+    severity: high
+    evidence_class: document
+    source: {doc: APH27_DRAFT, clause: "Annexure 2.1 (Revised)", page: 48}
+    applies_to: {requires_docs: [affidavit_2]}
+    check: "doc.affidavit_2.stamp_value >= 200"
+    message_fail: "Affidavit 2 stamp duty is Rs {doc.affidavit_2.stamp_value}; revised minimum Rs 200 required under draft norms."
+    message_pass: "Affidavit 2 stamp duty meets revised Rs 200 requirement."
+
+  - id: R-FIRE-VALID-SESSION-27
+    title: Fire NOC valid through 2027-28 session with 90-day buffer
+    category: safety
+    severity: critical
+    evidence_class: verification
+    source: {doc: APH27_DRAFT, clause: "Clause 2.4.1", page: 35}
+    applies_to: {requires_docs: [fire_noc]}
+    check: "doc.fire_noc.valid_upto >= '2027-09-30'"
+    message_fail: "Fire NOC expires on {doc.fire_noc.valid_upto}, does not meet 90-day post-session buffer requirement."
+    message_pass: "Fire NOC covers session and buffer."
+

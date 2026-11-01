@@ -78,7 +78,7 @@ export function AppShell() {
   useAppSurface();
   const location = useLocation();
   const { role } = useAuth();
-  const portal = role === "institution";
+  const portal = role === "institution" || role === "institution_admin" || role === "institution_operator" || role === "applicant";
   const t = useT();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [navOpen, setNavOpen] = useState(false);
@@ -138,6 +138,18 @@ export function AppShell() {
         </>
       )}
       <div className="flex min-h-dvh flex-col transition-[padding] duration-200 ease-out lg:pl-[var(--sidebar-w)]">
+        {/* Universal SIH 2026 Demonstration Banner */}
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-200 font-mono flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-900 dark:text-amber-100">
+              DEMONSTRATION PROTOTYPE
+            </span>
+            <span className="truncate">
+              SYNTHETIC FICTIONAL DATA ONLY • EXTERNAL SERVICES SIMULATED LOCALLY (AICTE, APAAR, DIGILOCKER)
+            </span>
+          </div>
+          <span className="hidden md:inline font-semibold opacity-75">SIH 2026 PS 26261</span>
+        </div>
         <Topbar portal={portal} onOpenNav={() => setNavOpen(true)} onOpenPalette={() => setPaletteOpen(true)} />
         <main id="main" tabIndex={-1} className="w-full min-w-0 flex-1 px-4 py-6 outline-none sm:px-6 lg:px-8 lg:py-8">
           <Outlet />

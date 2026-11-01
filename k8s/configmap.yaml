@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pramana-config
+  namespace: pramana
+data:
+  PRAMANA_REDIS_URL: "redis://pramana-redis:6379/0"
+  PRAMANA_CELERY_BROKER_URL: "redis://pramana-redis:6379/1"
+  PRAMANA_CELERY_RESULT_URL: "redis://pramana-redis:6379/2"
+  PRAMANA_CELERY_EAGER: "false"
+  PRAMANA_LOG_LEVEL: "INFO"
+  PRAMANA_WATCH_SCHEDULER: "true"
+

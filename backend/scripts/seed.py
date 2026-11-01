@@ -34,8 +34,13 @@ def main(validate: bool = True, fix: Path = FIX, threads: bool = False) -> None:
         sys.exit("fixtures/out/manifest.json missing: run scripts/make_fixtures.py first")
     for sub in ("documents", "cache", "rulesets", "sim"):
         shutil.rmtree(s.data_dir / sub, ignore_errors=True)
+    from pramana.db import engine
+    engine.dispose()
     for f in s.data_dir.glob("pramana.db*"):
-        f.unlink()
+        try:
+            f.unlink()
+        except PermissionError:
+            pass
     if not s.db_url.startswith("sqlite"):
         from pramana.db import drop_all
 
@@ -152,8 +157,12 @@ def main(validate: bool = True, fix: Path = FIX, threads: bool = False) -> None:
             print(f"{spec['key']:4} {app.id} {run.status:9} findings={run.summary.get('findings')} "
                   f"{time.perf_counter() - t0:5.1f}s  {spec['story'][:70]}")
         from pramana.history.watch import seed_outcomes
+        from pramana.offline.demo import seed_offline_field_cases
+        from pramana.trust.demo import seed_trust_infrastructure
 
         seed_outcomes(db, m, users["officer"])
+        seed_offline_field_cases(db, users["officer"])
+        seed_trust_infrastructure(db, users["admin"])
         if threads:
             # Last, after every run: the round adds messages and notifications, never a finding
             from pramana.conversation.demo import seed_round

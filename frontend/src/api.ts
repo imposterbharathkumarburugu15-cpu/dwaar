@@ -34,6 +34,15 @@ import type {
 } from "./types";
 import type { FacultyOverlapPayload, NetworkPayload } from "./pages/integrity/types";
 import type { DrishtiAskBody, DrishtiAskResponse, DrishtiLanguage, DrishtiSuggestionsPayload } from "./drishti/types";
+import type {
+  CertificateItem,
+  CertValidationResponse,
+  CRLItem,
+  HsmHealthResponse,
+  IncidentItem,
+  KmsKey,
+  TrustAnchorItem,
+} from "./pages/trust/types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -211,6 +220,61 @@ export const api = {
   // Drishti, the assistant (docs/features/drishti-spec.md)
   drishtiAsk: (body: DrishtiAskBody) => post<DrishtiAskResponse>("/drishti/ask", body),
   drishtiSuggestions: (lang: DrishtiLanguage = "en") => get<DrishtiSuggestionsPayload>(`/drishti/suggestions?lang=${lang}`),
+
+  // Intelligence Systems (SIH 2026 Problem Statement 26261)
+  rulesets: () => get<any[]>("/intelligence/regulatory/rulesets"),
+  compareRulesets: (base: string, target: string) =>
+    get<any>(`/intelligence/regulatory/compare?base_version=${enc(base)}&target_version=${enc(target)}`),
+  simulateRules: (body: any) => post<any>("/intelligence/regulatory/simulate", body),
+  crossDoc: (appId: string) => get<any>(`/intelligence/applications/${enc(appId)}/cross-doc`),
+  institutionRisk: (instId: string) => get<any>(`/intelligence/risk/institution/${enc(instId)}`),
+  sectorRisk: () => get<any>("/intelligence/risk/sector-observatory"),
+  applicationLifecycle: (appId: string) => get<any>(`/intelligence/applications/${enc(appId)}/lifecycle`),
+  exportOfflineBundle: (appId: string) => get<any>(`/intelligence/offline/bundle/${enc(appId)}`),
+  syncOffline: (body: any) => post<any>("/intelligence/offline/sync", body),
+  reconcileOffline: (body: any) => post<any>("/intelligence/offline/reconcile", body),
+  // Phase 2: Offline Field Scrutiny & Tablet Signing
+  listFieldInspections: () => get<any[]>("/offline/inspections"),
+  createFieldInspection: (body: any) => post<any>("/offline/inspections", body),
+  getFieldInspection: (id: string) => get<any>(`/offline/inspections/${enc(id)}`),
+  attachFieldEvidence: (id: string, body: any) => post<any>(`/offline/inspections/${enc(id)}/evidence`, body),
+  signInspectionReport: (id: string, body: any) => post<any>(`/offline/inspections/${enc(id)}/sign`, body),
+  verifyInspectionSignature: (id: string) => post<any>(`/offline/inspections/${enc(id)}/verify-signature`, {}),
+  verifyOfflineQr: (body: any) => post<any>("/offline/qr/verify", body),
+  syncOfflineBatch: (body: any) => post<any>("/offline/sync/batch", body),
+  resolveOfflineConflict: (body: any) => post<any>("/offline/sync/resolve", body),
+  auditReceipt: () => get<any>("/intelligence/audit/receipt"),
+  simulateAuditTamper: () => post<any>("/intelligence/audit/simulate-tamper", {}),
+  deficiencyNoticeDraft: (appId: string) =>
+    get<any>(`/intelligence/applications/${enc(appId)}/deficiency-notice-draft`),
+  investigationBrief: (appId: string) =>
+    get<any>(`/intelligence/applications/${enc(appId)}/investigation-brief`),
+  trustKeys: () => get<KmsKey[]>("/trust/keys"),
+  trustKey: (keyId: string) => get<KmsKey>(`/trust/keys/${enc(keyId)}`),
+  generateTrustKey: (body: { key_id: string; algorithm: string; key_purpose: string; provider_type?: string }) =>
+    post<KmsKey>("/trust/keys", body),
+  rotateTrustKey: (keyId: string, body: { rotation_reason: string; grace_period_days?: number }) =>
+    post<{ status: string; old_key_id: string; new_key_id: string; new_version: number }>(`/trust/keys/${enc(keyId)}/rotate`, body),
+  revokeTrustKey: (keyId: string, body: { reason: string }) =>
+    post<{ status: string; key_id: string }>(`/trust/keys/${enc(keyId)}/revoke`, body),
+  hsmHealth: () => get<HsmHealthResponse>("/trust/hsm/health"),
+  certificates: () => get<CertificateItem[]>("/trust/certificates"),
+  validateCert: (body: { certificate_pem: string; environment?: string }) =>
+    post<CertValidationResponse>("/trust/certificates/validate", body),
+  crlList: () => get<CRLItem[]>("/trust/crl"),
+  syncCrl: (body: { crl_bytes_b64: string; issuer_cert_pem: string }) =>
+    post<any>("/trust/crl/sync", body),
+  trustAnchors: (env: string = "development") =>
+    get<TrustAnchorItem[]>(`/trust/anchors?environment=${enc(env)}`),
+  addTrustAnchor: (body: { certificate_id: string; environment?: string }) =>
+    post<any>("/trust/anchors", body),
+  removeTrustAnchor: (certificateId: string, env: string = "development") =>
+    post<any>(`/trust/anchors/${enc(certificateId)}/remove?environment=${enc(env)}`, {}),
+  trustIncidents: () => get<IncidentItem[]>("/trust/incidents"),
+  raiseIncident: (body: { incident_type: string; description: string; affected_key_id?: string; severity?: string }) =>
+    post<IncidentItem>("/trust/incidents", body),
+  recoverIncident: (incidentId: string, body: { generate_replacement_key?: boolean; resolution_notes?: string }) =>
+    post<any>(`/trust/incidents/${enc(incidentId)}/recover`, body),
 };
 
 export const qk = {
@@ -238,6 +302,20 @@ export const qk = {
   platform: ["platform"] as const,
   retention: ["retention"] as const,
   drishtiSuggestions: (lang: string) => ["drishti", "suggestions", lang] as const,
+  rulesetsList: ["intelligence", "rulesets"] as const,
+  rulesetDiff: (base: string, target: string) => ["intelligence", "ruleset-diff", base, target] as const,
+  sectorRisk: ["intelligence", "sector-risk"] as const,
+  instRisk: (instId: string) => ["intelligence", "institution-risk", instId] as const,
+  crossDoc: (appId: string) => ["intelligence", "cross-doc", appId] as const,
+  lifecycle: (appId: string) => ["intelligence", "lifecycle", appId] as const,
+  brief: (appId: string) => ["intelligence", "brief", appId] as const,
+  deficiencyDraft: (appId: string) => ["intelligence", "deficiency-draft", appId] as const,
+  trustKeys: ["trust", "keys"] as const,
+  hsmHealth: ["trust", "hsm-health"] as const,
+  certificates: ["trust", "certificates"] as const,
+  crlList: ["trust", "crl-list"] as const,
+  trustAnchors: (env: string) => ["trust", "anchors", env] as const,
+  trustIncidents: ["trust", "incidents"] as const,
 };
 
 export function errorMessage(err: unknown): string {

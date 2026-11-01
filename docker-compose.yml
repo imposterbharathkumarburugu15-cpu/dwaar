@@ -1,48 +1,121 @@
-# Deployment documentation: PostgreSQL plus the Pramana app. Not run in this prototype (no Docker on the
-# build machine); the app was tested against PostgreSQL 16 separately. Put an HTTPS reverse proxy in front.
-#
-#   export POSTGRES_PASSWORD=...            # any strong password
-#   export PRAMANA_MASTER_KEY=$(python -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())")
-#   docker compose up -d --build
-#   docker compose run --rm app sh -c "python scripts/make_fixtures.py && python scripts/seed.py"   # synthetic demo data
-services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: pramana
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-      POSTGRES_DB: pramana
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pramana -d pramana"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
+version: '3.8'
 
-  app:
-    build: .
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pramana-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pramana}
+      POSTGRES_USER: ${POSTGRES_USER:-pramana_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pramana_secure_pass_2026}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pramana_user -d pramana"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: pramana-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: pramana-api
+    restart: unless-stopped
     depends_on:
-      db:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
-      PRAMANA_DATABASE_URL: postgresql+psycopg://pramana:${POSTGRES_PASSWORD}@db/pramana
-      # Wraps every document's data key; keep it in a secret store, never in the data volume
-      PRAMANA_MASTER_KEY: ${PRAMANA_MASTER_KEY:?set PRAMANA_MASTER_KEY}
-      # Behind HTTPS: __Host- session cookie and HSTS
-      PRAMANA_COOKIE_SECURE: "true"
-      PRAMANA_DEMO_MODE: "false"
-      PRAMANA_JOB_WORKERS: "2"
-      PRAMANA_SANDBOX_WORKERS: "2"
-      PRAMANA_SANDBOX_MEMORY_MB: "2048"
-      PRAMANA_LLM_PROVIDERS: ""
+      PRAMANA_DATABASE_URL: postgresql+psycopg://pramana_user:pramana_secure_pass_2026@postgres:5432/pramana
+      PRAMANA_REDIS_URL: redis://redis:6379/0
+      PRAMANA_CELERY_BROKER_URL: redis://redis:6379/1
+      PRAMANA_CELERY_RESULT_URL: redis://redis:6379/2
+      PRAMANA_CELERY_EAGER: "false"
     volumes:
-      - appdata:/data
+      - app_data:/var/lib/pramana/data
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  worker-documents:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: pramana-worker-documents
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PRAMANA_DATABASE_URL: postgresql+psycopg://pramana_user:pramana_secure_pass_2026@postgres:5432/pramana
+      PRAMANA_REDIS_URL: redis://redis:6379/0
+      PRAMANA_CELERY_BROKER_URL: redis://redis:6379/1
+      PRAMANA_CELERY_RESULT_URL: redis://redis:6379/2
+      PRAMANA_CELERY_EAGER: "false"
+    volumes:
+      - app_data:/var/lib/pramana/data
+    command: ["celery", "-A", "backend.pramana.distributed.celery_app", "worker", "-Q", "document_processing", "-c", "4", "-l", "INFO"]
+
+  worker-verification:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: pramana-worker-verification
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PRAMANA_DATABASE_URL: postgresql+psycopg://pramana_user:pramana_secure_pass_2026@postgres:5432/pramana
+      PRAMANA_REDIS_URL: redis://redis:6379/0
+      PRAMANA_CELERY_BROKER_URL: redis://redis:6379/1
+      PRAMANA_CELERY_RESULT_URL: redis://redis:6379/2
+      PRAMANA_CELERY_EAGER: "false"
+    volumes:
+      - app_data:/var/lib/pramana/data
+    command: ["celery", "-A", "backend.pramana.distributed.celery_app", "worker", "-Q", "ai_verification,certificate_verification,risk_scoring", "-c", "2", "-l", "INFO"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: pramana-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "3000:80"
 
 volumes:
-  pgdata:
-  appdata:
+  postgres_data:
+  redis_data:
+  app_data:

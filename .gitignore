@@ -36,3 +36,8 @@ backend/models/
 *.gguf
 backend/training/drishti/data/
 backend/training/drishti/results/
+
+# Build markdown files excluded per instruction
+build.md
+BUILD.md
+*build*.md

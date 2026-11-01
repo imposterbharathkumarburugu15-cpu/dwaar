@@ -55,9 +55,23 @@ def phash_distance(a: str, b: str) -> int:
     return imagehash.hex_to_hash(a) - imagehash.hex_to_hash(b)
 
 
+def dhash_of(data: bytes, mime: str) -> str:
+    if mime == "application/pdf":
+        img = render_pdf_page(data, 0, 60)
+    else:
+        with Image.open(io.BytesIO(data)) as im:
+            img = im.convert("RGB")
+    return str(imagehash.dhash(img, hash_size=16))
+
+
+def dhash_distance(a: str, b: str) -> int:
+    return imagehash.hex_to_hash(a) - imagehash.hex_to_hash(b)
+
+
 def compute(data: bytes, mime: str, text: str) -> dict[str, Any]:
     return {
         "sha256": hashlib.sha256(data).hexdigest(),
         "phash": phash_of(data, mime),
+        "dhash": dhash_of(data, mime),
         "minhash": minhash(text) if text.strip() else [],
     }

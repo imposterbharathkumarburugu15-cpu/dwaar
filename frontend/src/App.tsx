@@ -32,10 +32,30 @@ const ContactPage = lazy(() => info().then((m) => ({ default: m.ContactPage })))
 const SitemapPage = lazy(() => info().then((m) => ({ default: m.SitemapPage })));
 // Cytoscape loads only with the integrity views
 const IntegrityPage = lazy(() => import("./pages/integrity/IntegrityPage"));
+const SimulationStudioPage = lazy(() => import("./pages/simulation/SimulationStudioPage"));
+const RiskObservatoryPage = lazy(() => import("./pages/risk/RiskObservatoryPage"));
+const DocumentComparePage = lazy(() => import("./pages/compare/DocumentComparePage"));
+const OfflineWorkspacePage = lazy(() => import("./pages/offline/OfflineWorkspacePage"));
+const TrustDashboardPage = lazy(() => import("./pages/trust/TrustDashboardPage"));
 // Living reference for design system v2; dev builds, or production with VITE_UI_KIT=1
 const UiKit = import.meta.env.DEV || import.meta.env.VITE_UI_KIT === "1" ? lazy(() => import("./ui2/Kit")) : null;
 
-const OFFICIAL: Role[] = ["officer", "verifier", "admin"];
+const OFFICIAL: Role[] = [
+  "super_admin",
+  "aicte_admin",
+  "regional_officer",
+  "external_verifier",
+  "officer",
+  "verifier",
+  "admin",
+];
+
+const INSTITUTION_ROLES: Role[] = [
+  "institution",
+  "institution_admin",
+  "institution_operator",
+  "applicant",
+];
 
 function Guard({ roles, children }: { roles?: Role[]; children: ReactNode }) {
   const { data, isPending, error, refetch, isFetching } = useSession();
@@ -89,6 +109,10 @@ export function App() {
           }
         >
           <Route path="/dashboard" element={only(OFFICIAL, <DashboardPage />)} />
+          <Route path="/simulation" element={only(OFFICIAL, <SimulationStudioPage />)} />
+          <Route path="/risk" element={only(OFFICIAL, <RiskObservatoryPage />)} />
+          <Route path="/doc-compare" element={only(OFFICIAL, <DocumentComparePage />)} />
+          <Route path="/offline" element={only(OFFICIAL, <OfflineWorkspacePage />)} />
           <Route path="/applications/:appId/:tab?" element={only(OFFICIAL, <ApplicationWorkspace />)} />
           <Route path="/rules" element={only(OFFICIAL, <RulesPage />)} />
           <Route path="/issuers" element={only(OFFICIAL, <IssuerSimulatorPage />)} />
@@ -96,11 +120,12 @@ export function App() {
           <Route path="/analyse" element={only(OFFICIAL, <AnalysePage />)} />
           {/* Verify a PDF is part of Analyse a document now; old links land there */}
           <Route path="/verify-pdf" element={<Navigate to="/analyse" replace />} />
-          <Route path="/audit" element={only(["officer", "admin"], <AuditLogPage />)} />
-          <Route path="/platform" element={only(["officer", "admin"], <PlatformPage />)} />
-          <Route path="/portal" element={only(["institution"], <MyApplicationsPage />)} />
-          <Route path="/portal/new" element={only(["institution"], <NewApplicationPage />)} />
-          <Route path="/portal/applications/:appId" element={only(["institution"], <InstitutionApplicationPage />)} />
+          <Route path="/audit" element={only(["super_admin", "aicte_admin", "officer", "admin"], <AuditLogPage />)} />
+          <Route path="/trust" element={only(["super_admin", "aicte_admin", "officer", "admin"], <TrustDashboardPage />)} />
+          <Route path="/platform" element={only(["super_admin", "aicte_admin", "officer", "admin"], <PlatformPage />)} />
+          <Route path="/portal" element={only(INSTITUTION_ROLES, <MyApplicationsPage />)} />
+          <Route path="/portal/new" element={only(INSTITUTION_ROLES, <NewApplicationPage />)} />
+          <Route path="/portal/applications/:appId" element={only(INSTITUTION_ROLES, <InstitutionApplicationPage />)} />
           {UiKit && <Route path="/ui-kit" element={<UiKit />} />}
         </Route>
         <Route path="*" element={<NotFoundPage />} />

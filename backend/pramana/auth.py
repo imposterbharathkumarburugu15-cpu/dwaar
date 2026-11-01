@@ -22,14 +22,96 @@ def cookie_name() -> str:
     return f"__Host-{COOKIE}" if get_settings().cookie_secure else COOKIE
 
 ROLES = {
-    "institution": "Institution applicant",
+    "super_admin": "Platform Super Admin",
+    "aicte_admin": "AICTE Administrator",
+    "regional_officer": "Regional Regulatory Officer",
+    "institution_admin": "Institution Administrator",
+    "institution_operator": "Institution Data Operator",
+    "applicant": "Applicant",
+    "external_verifier": "External Verifier",
+    # Legacy aliases
     "officer": "AICTE scrutiny officer",
     "verifier": "Verification cell",
     "admin": "Administrator / auditor",
+    "institution": "Institution applicant",
 }
-OFFICIAL_ROLES = {"officer", "verifier", "admin"}
+
+OFFICIAL_ROLES = {
+    "super_admin",
+    "aicte_admin",
+    "regional_officer",
+    "officer",
+    "external_verifier",
+    "verifier",
+    "admin",
+}
+INSTITUTION_ROLES = {"institution_admin", "institution_operator", "institution", "applicant"}
+
+# Action-level permissions matrix for granular RBAC
+PERMISSIONS: dict[str, set[str]] = {
+    "platform:view": {"super_admin", "admin"},
+    "platform:configure": {"super_admin"},
+    "users:manage": {"super_admin", "aicte_admin"},
+    "keys:rotate": {"super_admin"},
+    "audit:view": {"super_admin", "aicte_admin", "regional_officer", "officer", "admin"},
+    "audit:checkpoint": {"super_admin", "aicte_admin", "admin"},
+    "audit:simulate_tamper": {"super_admin", "aicte_admin", "admin"},
+    "rules:view": {"super_admin", "aicte_admin", "regional_officer", "officer", "external_verifier", "verifier", "institution_admin"},
+    "rules:simulate": {"super_admin", "aicte_admin", "regional_officer", "officer"},
+    "rules:configure": {"super_admin", "aicte_admin"},
+    "apps:list_all": {"super_admin", "aicte_admin", "regional_officer", "officer", "admin"},
+    "apps:view_assigned": {"regional_officer", "officer", "external_verifier", "verifier"},
+    "apps:view_own": {"institution_admin", "institution_operator", "institution", "applicant"},
+    "apps:create": {"institution_admin", "institution_operator", "institution"},
+    "apps:upload_docs": {"institution_admin", "institution_operator", "institution"},
+    "apps:submit": {"institution_admin", "institution"},
+    "apps:scrutinize": {"super_admin", "aicte_admin", "regional_officer", "officer"},
+    "apps:review_action": {"regional_officer", "officer", "aicte_admin"},
+    "apps:request_rectification": {"regional_officer", "officer", "aicte_admin"},
+    "apps:respond_rectification": {"institution_admin", "institution_operator", "institution"},
+    "apps:record_decision": {"aicte_admin", "regional_officer", "officer"},
+    "risk:view_sector": {"super_admin", "aicte_admin", "regional_officer", "officer"},
+    "forensics:analyze": {"super_admin", "aicte_admin", "regional_officer", "officer", "external_verifier", "verifier"},
+    "offline:export_bundle": {"super_admin", "aicte_admin", "regional_officer", "officer", "external_verifier"},
+    "offline:sync": {"super_admin", "aicte_admin", "regional_officer", "officer", "external_verifier"},
+    "offline:reconcile": {"super_admin", "aicte_admin", "regional_officer", "officer"},
+    "inspection:create": {"super_admin", "aicte_admin", "regional_officer", "officer"},
+    "inspection:sign": {"super_admin", "aicte_admin", "regional_officer", "officer"},
+    "inspection:view": {"super_admin", "aicte_admin", "regional_officer", "officer", "external_verifier", "verifier"},
+}
 
 _ph = PasswordHasher()
+
+
+class PasswordPolicyError(ValueError):
+    """Raised when password fails complexity or length requirements."""
+    pass
+
+
+def validate_password_complexity(pw: str, is_admin: bool = False) -> None:
+    """Enforces enterprise password complexity rules."""
+    min_len = 12 if is_admin else 8
+    if len(pw) < min_len:
+        raise PasswordPolicyError(f"Password must be at least {min_len} characters long.")
+    if not any(c.isupper() for c in pw):
+        raise PasswordPolicyError("Password must include at least one uppercase letter.")
+    if not any(c.islower() for c in pw):
+        raise PasswordPolicyError("Password must include at least one lowercase letter.")
+    if not any(c.isdigit() for c in pw):
+        raise PasswordPolicyError("Password must include at least one digit.")
+    if not any(c in "!@#$%^&*()-_=+[]{}|;:,.<>?" for c in pw):
+        raise PasswordPolicyError("Password must include at least one special character.")
+
+
+def ensure_institution_access(user: User, institution_id: str | None) -> None:
+    """Enforces multi-institution isolation. Prevents IDOR cross-institution access."""
+    if user.role in OFFICIAL_ROLES:
+        return  # Regulatory officers can view applications across institutions
+    if not user.institution_id or not institution_id or user.institution_id != institution_id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Access denied: You do not have permission to view or modify records from another institution.",
+        )
 
 
 def hash_password(pw: str) -> str:
@@ -103,8 +185,48 @@ def current_user(sess: AuthSession = Depends(current_session), db: Session = Dep
 
 def require_roles(*roles: str):
     def dep(user: User = Depends(current_user)) -> User:
+        # Check direct role or role aliases
         if user.role not in roles:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, f"requires role: {', '.join(roles)}")
+            # Map legacy officer -> regional_officer, admin -> super_admin, institution -> institution_operator
+            role_aliases = {
+                "officer": {"regional_officer", "aicte_admin", "super_admin"},
+                "verifier": {"external_verifier"},
+                "admin": {"super_admin", "aicte_admin"},
+                "institution": {"institution_admin", "institution_operator", "applicant"},
+            }
+            allowed = False
+            for req in roles:
+                if user.role in role_aliases.get(req, set()):
+                    allowed = True
+                    break
+            if not allowed:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, f"requires role: {', '.join(roles)}")
+        return user
+
+    return dep
+
+
+def has_permission(user: User, perm: str) -> bool:
+    allowed_roles = PERMISSIONS.get(perm, set())
+    if user.role in allowed_roles:
+        return True
+    # Check aliases
+    alias_map = {
+        "super_admin": {"admin"},
+        "regional_officer": {"officer"},
+        "institution_operator": {"institution"},
+        "external_verifier": {"verifier"},
+    }
+    for r in allowed_roles:
+        if user.role in alias_map.get(r, set()):
+            return True
+    return False
+
+
+def require_permission(perm: str):
+    def dep(user: User = Depends(current_user)) -> User:
+        if not has_permission(user, perm):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"insufficient permissions: requires '{perm}'")
         return user
 
     return dep
@@ -113,7 +235,7 @@ def require_roles(*roles: str):
 def can_access_application(user: User, app: Application) -> bool:
     if user.role in OFFICIAL_ROLES:
         return True
-    return user.role == "institution" and user.institution_id == app.institution_id
+    return user.role in INSTITUTION_ROLES and user.institution_id == app.institution_id
 
 
 def load_application(db: Session, user: User, app_id: str) -> Application:

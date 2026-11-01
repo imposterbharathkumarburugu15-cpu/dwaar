@@ -17,6 +17,13 @@ const MiniEye = lazy(() => import("../../landing/hero/MiniEye"));
 
 const OFFICIAL_ORDER: Role[] = ["officer", "verifier", "admin"];
 const ROLE_LABEL: Record<Role, string> = {
+  super_admin: "Platform Super Admin",
+  aicte_admin: "AICTE Administrator",
+  regional_officer: "Regional Regulatory Officer",
+  institution_admin: "Institution Administrator",
+  institution_operator: "Institution Data Operator",
+  applicant: "Applicant Student / Faculty",
+  external_verifier: "External Verifier Cell",
   officer: "Scrutiny officer",
   verifier: "Verification cell",
   admin: "Administrator and auditor",
